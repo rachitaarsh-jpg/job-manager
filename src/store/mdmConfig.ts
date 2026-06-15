@@ -28,10 +28,6 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           }
         })
 
-<<<<<<< Updated upstream
-        if(resp.data?.length) {
-          this.configs = resp.data
-=======
         if (resp.data?.length) {
           // Filter out legacy OFBiz-migrated DataManagerConfig records.
           // Only Moqui-native configs are valid for the Manual Uploads screen.
@@ -41,15 +37,14 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           this.configs = resp.data.filter((config: any) =>
             config.importServiceName?.includes("#")
           )
->>>>>>> Stashed changes
         }
-      } catch(err) {
+      } catch (err) {
         logger.error("Failed to fetch configs", err)
       }
     },
     async fetchConfigById(configId: string) {
       const isConfigDataAvailable = this.configs.some((config: any) => config.configId === configId)
-      if(isConfigDataAvailable) {
+      if (isConfigDataAvailable) {
         return;
       }
 
@@ -59,10 +54,10 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           method: "get"
         })
 
-        if(resp.data?.length) {
+        if (resp.data?.length) {
           this.configs.push(resp.data)
         }
-      } catch(err) {
+      } catch (err) {
         logger.error(`Failed to fetch config with id ${configId}`, err)
       }
     },
@@ -72,18 +67,18 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           ...params
         } as any
 
-        Object.entries(this.filters).forEach(([ type, value ]) => {
-          if(type === "priority") {
+        Object.entries(this.filters).forEach(([type, value]) => {
+          if (type === "priority") {
             // We only have two priorities for the configs, HIGH(PRIORITY) and NORMAL
             // Thus when both are selected, we do not need to send the filter in payload
             // But in case any one of them is selected, deciding the operator on the basis of value selected
             // We can think of updating the UI for the priority filter to radio, so that only one option selection
             // is allowed
-            if(value.length === 1) {
+            if (value.length === 1) {
               payload["priority"] = "6"
               payload["priority_op"] = value[0] === "HIGH" ? "greater" : "less-equals"
             }
-          } else if(Array.isArray(value)) {
+          } else if (Array.isArray(value)) {
             payload[type] = value.join(",")
             payload[`${type}_op`] = "in"
           } else {
@@ -94,7 +89,7 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
         // As we have DataManagerLogs created from ofbiz as well, but we do not want to show them in the app
         // thus when statusId filter is not applied passing valid moqui status in filters to fetch only
         // moqui specific DataManagerLogs
-        if(!payload.statusId) {
+        if (!payload.statusId) {
           payload["statusId"] = "DmlsCancelled,DmlsCrashed,DmlsFailed,DmlsFinished,DmlsPending,DmlsQueued,DmlsRunning"
           payload["statusId_op"] = "in"
         }
@@ -105,18 +100,18 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           params: payload
         })
 
-        if(resp.data?.dataManagerLogsCount) {
-          if(params?.pageIndex > 0) {
+        if (resp.data?.dataManagerLogsCount) {
+          if (params?.pageIndex > 0) {
             this.logs = this.logs.concat(resp.data.dataManagerLogs)
           } else {
             this.logs = resp.data.dataManagerLogs
             this.logsCount = resp.data.dataManagerLogsCount
           }
-        } else if(params?.pageIndex == 0) {
+        } else if (params?.pageIndex == 0) {
           this.logs = []
           this.logsCount = 0
         }
-      } catch(err) {
+      } catch (err) {
         logger.error("Failed to fetch logs", err)
       }
     },
@@ -134,7 +129,7 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
 
         const log = this.logs.find((log: any) => log.logId === logId)
         log["statusId"] = "DmlsCancelled"
-      } catch(err) {
+      } catch (err) {
         logger.error(`Failed to cancel log with id ${logId}`, err)
       }
     },
