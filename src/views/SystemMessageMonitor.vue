@@ -106,6 +106,23 @@
                   <ion-icon slot="icon-only" :icon="closeCircleOutline" />
                 </ion-button>
               </div>
+
+              <div class="filter-item">
+                <ion-select
+                  :label="translate('Direction')"
+                  label-placement="stacked"
+                  interface="popover"
+                  :value="selectedIsOutgoing"
+                  @ionChange="selectedIsOutgoing = $event.detail.value"
+                >
+                  <ion-select-option value="">{{ translate("All") }}</ion-select-option>
+                  <ion-select-option value="N">{{ translate("Inbound") }}</ion-select-option>
+                  <ion-select-option value="Y">{{ translate("Outbound") }}</ion-select-option>
+                </ion-select>
+                <ion-button v-if="selectedIsOutgoing" fill="clear" class="clear-filter-btn" @click="selectedIsOutgoing = ''" :title="translate('Clear')">
+                  <ion-icon slot="icon-only" :icon="closeCircleOutline" />
+                </ion-button>
+              </div>
             </div>
           </ion-card-content>
         </ion-card>
@@ -114,8 +131,20 @@
           <ion-button fill="outline" :disabled="pageIndex === 0 || isLoading" @click="goToPreviousPage">
             {{ translate("Previous") }}
           </ion-button>
-          <ion-note color="medium">{{ translate("Page") }} {{ pageIndex + 1 }} / {{ pageCount }}</ion-note>
-          <ion-button fill="outline" :disabled="pageIndex >= pageCount - 1 || isLoading" @click="goToNextPage">
+          <div class="page-input">
+            <span>{{ translate("Page") }}</span>
+            <input
+              type="number"
+              min="1"
+              :max="pageCount"
+              :value="pageIndex + 1"
+              @keyup="validatePageInput($event)"
+              @change="goToPage($event)"
+              class="page-number-input"
+            />
+            <span>/ {{ pageCount }}</span>
+          </div>
+          <ion-button fill="outline" :disabled="pageIndex >= pageCount - 1" @click="goToNextPage">
             {{ translate("Next") }}
           </ion-button>
         </div>
@@ -138,7 +167,6 @@ import {
   IonHeader,
   IonIcon,
   IonMenuButton,
-  IonNote,
   IonPage,
   IonSearchbar,
   IonSelect,
@@ -244,13 +272,31 @@ const goToNextPage = () => {
   pageIndex.value += 1;
 };
 
+const validatePageInput = (event: any) => {
+  const value = parseInt(event.target.value);
+  if (value > pageCount.value) {
+    event.target.value = pageCount.value;
+  }
+};
+
+const goToPage = (event: any) => {
+  const newPage = parseInt(event.target.value);
+  if (newPage && newPage > 0 && newPage <= pageCount.value) {
+    pageIndex.value = newPage - 1;
+  } else {
+    event.target.value = pageIndex.value + 1;
+  }
+};
+
 watch([queryString, selectedStatusId, selectedTypeId, selectedParentTypeId, selectedRemoteId, selectedIsOutgoing], async () => {
   resetToFirstPage();
   await loadMessages();
 });
 
 watch(pageIndex, () => {
-  loadMessages();
+  if (!selectedIsOutgoing.value) {
+    loadMessages();
+  }
 });
 watch(pageIndex, () => {
   loadMessages();
@@ -258,25 +304,47 @@ watch(pageIndex, () => {
 
 onIonViewWillEnter(async () => {
   isInitialLoading.value = true;
-  if (route.query?.statusId) {
-    selectedStatusId.value = route.query.statusId as string;
-  } else {
-    selectedStatusId.value = "";
-  }
-  try {
-    await Promise.all([
-      store.fetchSystemMessageTypes(),
-      store.fetchSystemMessageRemotes(),
-      store.fetchSystemMessageStatusMetadata()
-    ]);
-    await loadMessages();
-  } finally {
-    isInitialLoading.value = false;
-  }
+  await Promise.all([
+    store.fetchSystemMessageTypes(),
+    store.fetchSystemMessageRemotes(),
+    store.fetchSystemMessageStatusMetadata()
+  ]);
+
+  const currentQuery = router.currentRoute.value.query;
+  selectedStatusId.value = (currentQuery?.statusId as string) ?? "";
+  selectedIsOutgoing.value = (currentQuery?.isOutgoing as string) ?? "";
+
+  await loadMessages();
+  isInitialLoading.value = false;
 });
 </script>
 
 <style scoped>
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacer-lg, 16px);
+}
+
+.filter-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filter-item ion-select {
+  flex: 1;
+}
+
+.clear-filter-btn {
+  --padding-start: 6px;
+  --padding-end: 6px;
+  flex-shrink: 0;
+  margin-inline-start: 4px;
+  height: 36px;
+  width: 36px;
+}
 
 .results-header {
   display: flex;
@@ -292,5 +360,29 @@ onIonViewWillEnter(async () => {
   align-items: center;
   gap: 12px;
   padding: 16px;
+}
+
+.page-input {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-sm, 8px);
+}
+
+.page-number-input {
+  width: 50px;
+  text-align: center;
+  border: 1px solid var(--ion-color-medium);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.page-number-input::-webkit-outer-spin-button,
+.page-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-number-input[type=number] {
+  -moz-appearance: textfield;
 }
 </style>
