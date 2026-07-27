@@ -108,6 +108,7 @@ function handleNotification(message: any) {
 
   const { mdmStore, systemMessageStore } = getStores();
   let mdmUpdated = false;
+  let systemMessageUpdated = false;
 
   docs.forEach((rawDoc: any) => {
     const doc = rawDoc._source || rawDoc._doc || rawDoc.doc || rawDoc.document || rawDoc;
@@ -119,6 +120,9 @@ function handleNotification(message: any) {
     if (isJobRun) {
       const event = new CustomEvent("moqui:jobRunUpdate", { detail: doc });
       window.dispatchEvent(event);
+      try {
+        if (syncChannel) syncChannel.postMessage({ type: "REFRESH_JOB_RUNS", detail: doc });
+      } catch (e) { /* ignore */ }
     } else if (isDataManagerLog) {
       mdmStore.upsertLog({
         ...doc,
@@ -129,6 +133,7 @@ function handleNotification(message: any) {
       mdmUpdated = true;
     } else if (isSystemMessage) {
       systemMessageStore.upsertSystemMessage(doc);
+      systemMessageUpdated = true;
     }
   });
 
@@ -136,6 +141,10 @@ function handleNotification(message: any) {
     // Fetch clean 50 logs from server to ensure 100% precision of all card counts and computed states
     mdmStore.fetchDataManagerLogs({ pageSize: 50, silent: true });
     broadcastMdmUpdate();
+  }
+  if (systemMessageUpdated) {
+    systemMessageStore.fetchSystemMessages({ pageSize: 50, silent: true });
+    broadcastSystemMessageUpdate();
   }
 
   if (message.showAlert !== false) {
@@ -172,6 +181,15 @@ export function useGlobalNotifications() {
           console.log("[BroadcastChannel] Syncing MDM logs from another tab/window...");
           const { mdmStore } = getStores();
           mdmStore.fetchDataManagerLogs({ pageSize: 50, silent: true });
+        } else if (event.data?.type === "REFRESH_SYSTEM_MESSAGES") {
+          console.log("[BroadcastChannel] Syncing System Messages from another tab/window...");
+          const { systemMessageStore } = getStores();
+          systemMessageStore.fetchSystemMessages({ pageSize: 50, silent: true });
+        } else if (event.data?.type === "REFRESH_JOB_RUNS") {
+          console.log("[BroadcastChannel] Syncing Job Runs from another tab/window...");
+          if (event.data?.detail) {
+            window.dispatchEvent(new CustomEvent("moqui:jobRunUpdate", { detail: event.data.detail }));
+          }
         }
       };
     } catch (err) {
@@ -194,4 +212,20 @@ export function useGlobalNotifications() {
     connectGlobalNotifications: () => _connect?.(),
     disconnectGlobalNotifications: () => _disconnect?.(),
   };
+}
+
+export function broadcastSystemMessageUpdate() {
+  try {
+    if (syncChannel) syncChannel.postMessage({ type: "REFRESH_SYSTEM_MESSAGES" });
+  } catch (err) {
+    console.error("[BroadcastChannel] Failed to broadcast system message update", err);
+  }
+}
+
+export function broadcastJobRunUpdate(detail: any) {
+  try {
+    if (syncChannel) syncChannel.postMessage({ type: "REFRESH_JOB_RUNS", detail });
+  } catch (err) {
+    console.error("[BroadcastChannel] Failed to broadcast job run update", err);
+  }
 }
