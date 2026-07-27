@@ -3,6 +3,8 @@ import { getTimeInMillis } from "@/utils";
 import { api } from "@common";
 import { defineStore } from "pinia";
 
+let activeIngestionTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const useMdmConfigStore = defineStore("mdmConfig", {
   state: () => ({
     configs: [] as Array<any>,
@@ -107,8 +109,10 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
         return false;
       }
     },
-    async fetchDataManagerLogs(params = { pageSize: 10, pageIndex: 0 }) {
-      this.isFetchingLogs = true;
+    async fetchDataManagerLogs(params: any = { pageSize: 10, pageIndex: 0 }) {
+      if(!params.silent) {
+        this.isFetchingLogs = true;
+      }
       try {
         const payload = {
           ...params
@@ -147,6 +151,7 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           params: payload
         })
 
+        const prevPendingCount = this.logs.filter((l: any) => ["DmlsPending", "DmlsQueued", "DmlsRunning"].includes(l.statusId)).length;
         if (resp.data?.dataManagerLogsCount) {
           this.logs = resp.data.dataManagerLogs
           this.logsCount = resp.data.dataManagerLogsCount
@@ -154,10 +159,33 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           this.logs = []
           this.logsCount = 0
         }
+        const newPendingCount = this.logs.filter((l: any) => ["DmlsPending", "DmlsQueued", "DmlsRunning"].includes(l.statusId)).length;
+        if (prevPendingCount > 0 && newPendingCount === 0) {
+          try {
+            const channel = new BroadcastChannel("accxui_job_manager_live_sync");
+            channel.postMessage({ type: "REFRESH_MDM_LOGS" });
+            channel.close();
+          } catch (e) { /* ignore */ }
+        }
+
+        if (newPendingCount > 0) {
+          if (!activeIngestionTimer) {
+            console.log(`[mdmConfig] ${newPendingCount} active ingestion(s) in progress. Watching for completion...`);
+            activeIngestionTimer = setTimeout(() => {
+              activeIngestionTimer = null;
+              this.fetchDataManagerLogs({ ...payload, silent: true });
+            }, 3000);
+          }
+        } else if (activeIngestionTimer) {
+          clearTimeout(activeIngestionTimer);
+          activeIngestionTimer = null;
+        }
       } catch (err) {
         logger.error("Failed to fetch logs", err)
       } finally {
-        this.isFetchingLogs = false;
+        if(!params.silent) {
+          this.isFetchingLogs = false;
+        }
       }
     },
     async fetchDataManagerLogById(logId: string) {
@@ -215,6 +243,31 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
     },
     async updateAppliedFilters(filterType: string, value: any) {
       this.filters[filterType] = value
+    },
+    /**
+     * Upsert a data manager log document received from a live WebSocket notification.
+     * Merges the sparse update into the existing entry (keyed on logId), or
+     * prepends if it's a new log. Caps the list at 50 to prevent unbounded growth.
+     */
+    upsertLog(doc: Record<string, any>) {
+      const logId = doc.logId || doc.dataManagerLogId || doc.id;
+      if(!logId) return;
+      const idx = this.logs.findIndex((log: any) => (log.logId || log.dataManagerLogId || log.id) == logId);
+      const normalized = {
+        ...doc,
+        logId,
+        configId: doc.configId || doc.dataManagerConfigId,
+        statusId: doc.statusId || doc.logStatusId || doc.status
+      };
+      if(idx >= 0) {
+        this.logs.splice(idx, 1, { ...this.logs[idx], ...normalized });
+      } else {
+        this.logs.unshift(normalized);
+      }
+      if(this.logs.length > 50) {
+        this.logs.splice(50);
+      }
+      this.logsCount = Math.max(this.logsCount || 0, this.logs.length);
     },
     async fetchGlobalStats() {
       const moquiStatuses = "DmlsCancelled,DmlsCrashed,DmlsFailed,DmlsFinished,DmlsPending,DmlsQueued,DmlsRunning"

@@ -5,6 +5,10 @@
         <ion-menu-button slot="start" />
         <ion-title>{{ translate("Dashboard") }}</ion-title>
         <ion-buttons slot="end">
+          <ion-badge :color="isLive ? 'success' : 'medium'" style="display: flex; align-items: center; gap: 4px; padding: 6px 10px;">
+            <ion-icon :icon="isLive ? pulseOutline : cloudOfflineOutline" style="font-size: 14px;" />
+            <span>{{ isLive ? translate("Live") : translate("Offline") }}</span>
+          </ion-badge>
           <ion-button :disabled="isLoading" @click="refreshData">
             <ion-spinner v-if="isLoading" name="crescent" slot="icon-only" />
             <ion-icon v-else slot="icon-only" :icon="syncOutline" />
@@ -512,7 +516,9 @@ import {
   cloudDownloadOutline,
   arrowForwardOutline,
   timeOutline,
-  warningOutline
+  warningOutline,
+  pulseOutline,
+  cloudOfflineOutline
 } from "ionicons/icons";
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import { DateTime } from "luxon";
@@ -522,7 +528,12 @@ import { useJobStore } from "@/store/jobs";
 import { useSystemMessageStore } from "@/store/systemMessage";
 import { useMdmConfigStore } from "@/store/mdmConfig";
 import { useUtilStore } from "@/store/util";
-import { getFileSize, showToast } from "@/utils";
+import { getFileSize, showToast, getTimeInMillis } from "@/utils";
+// Note: WebSocket is managed globally in App.vue via useGlobalNotifications.
+// Pipeline.vue only handles the job-run fragment of the global notification
+import { useGlobalNotifications, broadcastMdmUpdate } from "@/composables/useGlobalNotifications";
+
+const { isConnected: isLive } = useGlobalNotifications();
 
 const jobStore = useJobStore();
 const systemMessageStore = useSystemMessageStore();
@@ -922,6 +933,7 @@ const cancelDataManagerLog = async (configId: string, logId: string) => {
     await mdmStore.cancelDataManagerLog(configId, logId);
     showToast(translate("Data manager log cancelled."));
     await refreshData();
+    broadcastMdmUpdate();
   } catch (error) {
     showToast(translate("Failed to cancel data manager log."));
   }
@@ -963,13 +975,43 @@ const refreshData = async () => {
   }
 };
 
+/**
+ * Handler for job run updates dispatched by the global WebSocket handler.
+ * The global handler dispatches a native DOM CustomEvent because jobRunsMap
+ * is component-local state that cannot be accessed from outside this component.
+ */
+function onJobRunUpdate(event: Event) {
+  const doc = (event as CustomEvent).detail;
+  if (!doc?.jobRunId || !doc?.jobName) return;
+
+  const validJobNames = new Set(jobs.value.map((job: any) => job.jobName));
+  if (!validJobNames.has(doc.jobName)) return;
+
+  const existing = jobRunsMap.value[doc.jobName] || [];
+  const idx = existing.findIndex((r: any) => r.jobRunId === doc.jobRunId);
+  let next: any[];
+  if (idx >= 0) {
+    next = [...existing];
+    next[idx] = { ...existing[idx], ...doc };
+  } else {
+    next = [doc, ...existing];
+  }
+  next.sort((a: any, b: any) =>
+    getTimeInMillis(b.startTime || b.lastUpdatedStamp) - getTimeInMillis(a.startTime || a.lastUpdatedStamp)
+  );
+  jobRunsMap.value = { ...jobRunsMap.value, [doc.jobName]: next.slice(0, 15) };
+}
+
 onIonViewWillEnter(async () => {
   emitter.on("productStoreUpdated", refreshData);
+  // Listen for job run events dispatched by the global WS handler
+  window.addEventListener("moqui:jobRunUpdate", onJobRunUpdate);
   await refreshData();
 });
 
 onIonViewWillLeave(() => {
   emitter.off("productStoreUpdated", refreshData);
+  window.removeEventListener("moqui:jobRunUpdate", onJobRunUpdate);
 });
 </script>
 

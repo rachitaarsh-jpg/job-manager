@@ -172,6 +172,7 @@ const isInitialLoading = ref(true);
 
 const messages = computed(() => store.getSystemMessages);
 
+
 const total = computed(() => store.getSystemMessageTotal);
 const types = computed(() => store.getSystemMessageTypes);
 const parentTypes = computed(() => store.getSystemMessageParentTypes);
@@ -215,6 +216,10 @@ const loadMessages = async () => {
     payload["isOutgoing"] = selectedIsOutgoing.value
   }
 
+  if(selectedIsOutgoing.value) {
+    payload["isOutgoing"] = selectedIsOutgoing.value
+  }
+
   await store.fetchSystemMessages(payload);
 };
 
@@ -244,6 +249,9 @@ watch([queryString, selectedStatusId, selectedTypeId, selectedParentTypeId, sele
   await loadMessages();
 });
 
+watch(pageIndex, () => {
+  loadMessages();
+});
 watch(pageIndex, () => {
   loadMessages();
 });
