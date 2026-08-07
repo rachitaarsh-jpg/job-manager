@@ -17,9 +17,9 @@
             <p>{{ form.description.value || translate("Configure remote system connectivity and inspect related messages.") }}</p>
           </div>
           <div class="header-actions">
-            <ion-button v-if="hasPermission('COMMON_ADMIN')" fill="outline" @click="saveRemote">{{ translate("Save") }}</ion-button>
+            <ion-button v-if="hasPermission(Actions.APP_SYSTEM_MESSAGE_UPDATE)" fill="outline" @click="saveRemote">{{ translate("Save") }}</ion-button>
             <ion-button
-              v-if="!isCreateMode && hasPermission('COMMON_ADMIN')"
+              v-if="!isCreateMode && hasPermission(Actions.APP_SYSTEM_MESSAGE_UPDATE)"
               color="danger"
               fill="outline"
               @click="deleteRemote"
@@ -42,7 +42,7 @@
                   label-placement="stacked"
                   fill="outline"
                   auto-grow
-                  :readonly="!hasPermission('COMMON_ADMIN')"
+                  :readonly="!hasPermission(Actions.APP_SYSTEM_MESSAGE_UPDATE)"
                   :value="field.value || ''"
                   @ionInput="updateField(key, $event.detail.value || '')"
                 />
@@ -52,7 +52,7 @@
                   :label="translate(field.label)"
                   label-placement="stacked"
                   fill="outline"
-                  :readonly="(!isCreateMode && key === 'systemMessageRemoteId') || !hasPermission('COMMON_ADMIN')"
+                  :readonly="(!isCreateMode && key === 'systemMessageRemoteId') || !hasPermission(Actions.APP_SYSTEM_MESSAGE_UPDATE)"
                   :value="field.value || ''"
                   @ionInput="updateField(key, $event.detail.value)"
                 />
@@ -149,6 +149,7 @@ import { showToast } from "@/utils";
 import { useUtilStore } from "@/store/util";
 import { useUserStore } from "@/store/user";
 import { caretBackOutline, caretForwardOutline } from "ionicons/icons";
+import Actions from "@/authorization/actions";
 
 // Type based declaration
 const props = defineProps<{ id?: string }>();

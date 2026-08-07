@@ -19,8 +19,6 @@ import SystemMessageTypes from '@/views/SystemMessageTypes.vue';
 import SystemMessageTypeDetail from '@/views/SystemMessageTypeDetail.vue';
 import SystemMessageRemotes from '@/views/SystemMessageRemotes.vue';
 import SystemMessageRemoteDetail from '@/views/SystemMessageRemoteDetail.vue';
-import SolrMonitoring from '@/views/SolrMonitoring.vue';
-import SolrRepair from '@/views/SolrRepair.vue';
 import Login from '@common/components/Login.vue';
 import { useUserStore } from '@/store/user';
 import { useDataDocumentGraphStore } from '@/store/dataDocumentGraph';
@@ -31,6 +29,7 @@ import DataDocumentFeeds from '@/views/DataDocumentFeeds.vue';
 import DataDocumentFeedDetail from '@/views/DataDocumentFeedDetail.vue';
 
 import Pipeline from '@/views/Pipeline.vue';
+import Actions from "@/authorization/actions";
 
 // Defining types for the meta values
 declare module 'vue-router' {
@@ -62,7 +61,7 @@ const routes: Array<RouteRecordRaw> = [
     component: Catalog,
     beforeEnter: authGuard,
     meta: {
-      permissionId: ""
+      permissionId: Actions.APP_PRODUCT_VIEW
     }
   },
   {
@@ -206,18 +205,6 @@ const routes: Array<RouteRecordRaw> = [
     component: SystemMessageDetailView,
     beforeEnter: authGuard,
     props: true
-  },
-  {
-    path: '/solr-monitoring',
-    name: 'SolrMonitoring',
-    component: SolrMonitoring,
-    beforeEnter: authGuard
-  },
-  {
-    path: '/solr-repair',
-    name: 'SolrRepair',
-    component: SolrRepair,
-    beforeEnter: authGuard
   }
 ]
 
@@ -268,6 +255,10 @@ router.beforeEach(async (to, from) => {
 });
 
 router.beforeEach((to, from) => {
+  // Enforce the canonical version URL on every navigation (no-op until the version is resolved, or if
+  // already canonical). Redirect cancels this navigation. Logic lives in useAuth so it's shared.
+  if (useAuth().checkAppVersionRedirect()) return false;
+
   if (to.meta.permissionId && !useUserStore().hasPermission(to.meta.permissionId)) {
     let redirectToPath = from.path;
     // If the user has navigated from Login page or if it is page load, redirect user to settings page without showing any toast

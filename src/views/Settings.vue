@@ -52,7 +52,7 @@
           <ion-card-content>
             {{ translate('This is the name of the OMS you are connected to right now. Make sure that you are connected to the right instance before proceeding.') }}
           </ion-card-content>
-          <ion-button v-if="!commonUtil.isMoqui()" :standalone-hidden="!hasPermission('')" @click="commonUtil.goToOms()" fill="clear" :disabled="!hasPermission('COMMERCEUSER_VIEW')">
+          <ion-button v-if="!commonUtil.isMoqui()" :standalone-hidden="!hasPermission(Actions.APP_PWA_STANDALONE_ACCESS)" @click="commonUtil.goToOms()" fill="clear" :disabled="!hasPermission(Actions.APP_COMMERCE_VIEW)">
             {{ translate('Go to OMS') }}
             <ion-icon slot="end" :icon="openOutline" />
           </ion-button>
@@ -224,6 +224,7 @@ import { useMdmConfigStore } from "@/store/mdmConfig";
 import { useUserStore } from "@/store/user";
 import { useUtilStore } from "@/store/util";
 import { redirectToLegacyApp } from "@/utils";
+import Actions from "@/authorization/actions";
 
 const userStore = useUserStore();
 const utilStore = useUtilStore();

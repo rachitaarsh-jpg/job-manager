@@ -5,7 +5,7 @@
         <ion-menu-button slot="start" />
         <ion-title>{{ translate("Remote Systems") }}</ion-title>
         <ion-buttons slot="end">
-          <ion-button v-if="hasPermission('COMMON_ADMIN')" @click="router.push('/system-message-remotes/new')">
+          <ion-button v-if="hasPermission(Actions.APP_SYSTEM_MESSAGE_UPDATE)" @click="router.push('/system-message-remotes/new')">
             {{ translate("Create") }}
           </ion-button>
         </ion-buttons>
@@ -74,6 +74,7 @@ import { translate } from "@common";
 
 import { useSystemMessageStore } from "@/store/systemMessage";
 import { useUserStore } from "@/store/user";
+import Actions from "@/authorization/actions";
 
 const systemMessageStore = useSystemMessageStore();
 const userStore = useUserStore();

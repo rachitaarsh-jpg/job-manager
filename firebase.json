@@ -9,6 +9,10 @@
             "**/node_modules/**"
           ],
           "rewrites": [ {
+            "source": "/v3.1.1/**",
+            "destination": "/v3.1.1/index.html"
+          },
+          {
             "source": "**",
             "destination": "/index.html"
           } ],
@@ -43,6 +47,10 @@
             "**/node_modules/**"
           ],
           "rewrites": [ {
+            "source": "/v3.1.1/**",
+            "destination": "/v3.1.1/index.html"
+          },
+          {
             "source": "**",
             "destination": "/index.html"
           } ],
@@ -77,6 +85,10 @@
             "**/node_modules/**"
           ],
           "rewrites": [ {
+            "source": "/v3.1.1/**",
+            "destination": "/v3.1.1/index.html"
+          },
+          {
             "source": "**",
             "destination": "/index.html"
           } ],
@@ -111,6 +123,10 @@
             "**/node_modules/**"
           ],
           "rewrites": [ {
+            "source": "/v3.1.1/**",
+            "destination": "/v3.1.1/index.html"
+          },
+          {
             "source": "**",
             "destination": "/index.html"
           }],
