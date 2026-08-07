@@ -531,7 +531,7 @@ import { useUtilStore } from "@/store/util";
 import { getFileSize, showToast, getTimeInMillis } from "@/utils";
 // Note: WebSocket is managed globally in App.vue via useGlobalNotifications.
 // Pipeline.vue only handles the job-run fragment of the global notification
-import { useGlobalNotifications, broadcastMdmUpdate } from "@/composables/useGlobalNotifications";
+import { useGlobalNotifications } from "@/composables/useGlobalNotifications";
 
 const { isConnected: isLive } = useGlobalNotifications();
 
@@ -933,7 +933,7 @@ const cancelDataManagerLog = async (configId: string, logId: string) => {
     await mdmStore.cancelDataManagerLog(configId, logId);
     showToast(translate("Data manager log cancelled."));
     await refreshData();
-    broadcastMdmUpdate();
+
   } catch (error) {
     showToast(translate("Failed to cancel data manager log."));
   }

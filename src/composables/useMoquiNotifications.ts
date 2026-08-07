@@ -40,32 +40,38 @@ export function useMoquiNotifications(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
 
-  /** Build the WebSocket URL from the OMS cookie and session token cookie. */
-  function buildWsUrl(): string | null {
+  /** Build candidate WebSocket URLs from the OMS cookie and session token cookie. */
+  function buildWsUrls(): string[] {
     const oms = commonUtil.getOmsURL();
     const token = cookieHelper().get("token") as string;
-    console.log("[useMoquiNotifications] buildWsUrl oms:", oms, "token:", !!token);
 
     if (!oms || !token) {
       console.warn("[useMoquiNotifications] OMS URL or token cookie missing; cannot connect.");
-      return null;
+      return [];
     }
 
     try {
       // Replace the http(s) scheme with ws(s).
       let base = oms.replace(/^https?:\/\//, (match: string) =>
         match.startsWith("https") ? "wss://" : "ws://"
-      );
+      ).replace(/\/$/, "");
 
-      // Remove /rest/s1/ or /api/ if present, since websockets are usually mounted at the context root
-      base = base.replace(/\/(rest\/s1|api)\/?$/, "");
+      const param = `?moquiSessionToken=${encodeURIComponent(token)}`;
+      const urls: string[] = [];
 
-      const url = `${base.replace(/\/$/, "")}/notws?moquiSessionToken=${encodeURIComponent(token)}`;
-      console.log("[useMoquiNotifications] Built WebSocket URL:", url);
-      return url;
+      // Candidate 1: Try appending /notws directly to the exact OMS base URL (e.g., /api/notws)
+      urls.push(`${base}/notws${param}`);
+
+      // Candidate 2: Try stripping /rest/s1 or /api and appending /notws
+      const strippedBase = base.replace(/\/(rest\/s1|api)\/?$/, "");
+      if (strippedBase !== base) {
+        urls.push(`${strippedBase}/notws${param}`);
+      }
+
+      return urls;
     } catch (err) {
       console.error("[useMoquiNotifications] Invalid OMS URL", err);
-      return null;
+      return [];
     }
   }
 
@@ -82,11 +88,20 @@ export function useMoquiNotifications(
     });
   }
 
-  function connect() {
+  function connect(urlIndex = 0) {
     destroyed = false;
 
-    const url = buildWsUrl();
-    if (!url) return;
+    const urls = buildWsUrls();
+    if (urls.length === 0) return;
+
+    if (urlIndex >= urls.length) {
+      // If we exhausted all fallback URLs, wait for the reconnect delay and start over at index 0
+      reconnectTimer = setTimeout(() => connect(0), options.reconnectDelay || 5000);
+      return;
+    }
+
+    const url = urls[urlIndex];
+    console.log(`[useMoquiNotifications] Attempting WebSocket connection (Candidate ${urlIndex + 1}/${urls.length}):`, url);
 
     // Prevent leaking connections if connect() is called multiple times
     if (activeSocket) {
@@ -95,6 +110,7 @@ export function useMoquiNotifications(
 
     const socket = new WebSocket(url);
     activeSocket = socket;
+    let hasConnectedSuccessfully = false;
 
     socket.onopen = () => {
       // Guard: discard if this socket was superseded before the open event fired.
@@ -102,50 +118,53 @@ export function useMoquiNotifications(
         socket.close();
         return;
       }
+      hasConnectedSuccessfully = true;
       isConnected.value = true;
       if (options.onConnectionChange) options.onConnectionChange(true);
       subscribe(socket);
     };
 
     socket.onmessage = (event: MessageEvent) => {
-      // Guard: discard messages from stale sockets.
       if (socket !== activeSocket) return;
-
       try {
-        const data: MoquiNotificationMessage = JSON.parse(event.data);
-        onMessage(data);
+        const message = JSON.parse(event.data);
+        onMessage(message);
       } catch (err) {
         logger.error("[useMoquiNotifications] Failed to parse message", err);
       }
     };
 
-    socket.onerror = (event: Event) => {
-      if (socket !== activeSocket) return;
-      logger.error("[useMoquiNotifications] WebSocket error", event);
-    };
-
     socket.onclose = (event: CloseEvent) => {
-      if (socket !== activeSocket) return;
+      if (socket !== activeSocket || destroyed) return;
+
       isConnected.value = false;
       if (options.onConnectionChange) options.onConnectionChange(false);
 
-      // 1000 = normal closure; anything else is unexpected — schedule reconnect.
-      if (!destroyed && event.code !== 1000) {
-        reconnectTimer = setTimeout(() => {
-          if (!destroyed) connect();
-        }, reconnectDelay);
+      if (event.code !== 1000) {
+        if (hasConnectedSuccessfully) {
+          // It worked previously but dropped, so wait the reconnect delay and try again from candidate 0
+          reconnectTimer = setTimeout(() => connect(0), options.reconnectDelay || 5000);
+        } else {
+          // It never connected, immediately try the next candidate URL
+          connect(urlIndex + 1);
+        }
       }
+    };
+
+    socket.onerror = (error: Event) => {
+      if (socket !== activeSocket) return;
+      // The onclose event will immediately follow onerror, so we let onclose handle the fallback logic.
     };
   }
 
   function disconnect() {
     destroyed = true;
-    if (reconnectTimer !== null) {
+    if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
     if (activeSocket) {
-      activeSocket.close(1000, "intentional disconnect");
+      activeSocket.close(1000, "intentional_disconnect");
       activeSocket = null;
     }
     isConnected.value = false;

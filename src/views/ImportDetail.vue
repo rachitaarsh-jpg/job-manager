@@ -182,7 +182,7 @@ import { useJobStore } from "@/store/jobs";
 import logger from "@/logger";
 import { getQueueType } from "@/utils/config";
 import { saveAs } from "file-saver";
-import { broadcastMdmUpdate } from "@/composables/useGlobalNotifications";
+
 
 const route = router.currentRoute.value;
 const typeId = route.params.type as string; // 'sales-orders', etc.
@@ -323,7 +323,7 @@ const startImport = async () => {
     // On success, we want to clear the selectedFile data from the page
     removeFile();
     mdmStore.fetchDataManagerLogs({ pageSize: 50, silent: true });
-    broadcastMdmUpdate();
+
   } catch(err) {
     showToast(translate("File upload failed"));
     logger.error("File upload failed", err)

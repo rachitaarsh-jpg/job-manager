@@ -66,16 +66,7 @@ function getStores() {
   };
 }
 
-let syncChannel: BroadcastChannel | null = null;
 
-export function broadcastMdmUpdate() {
-  try {
-    if (!syncChannel) syncChannel = new BroadcastChannel("accxui_job_manager_live_sync");
-    syncChannel.postMessage({ type: "REFRESH_MDM_LOGS" });
-  } catch (err) {
-    console.error("[BroadcastChannel] Failed to broadcast MDM update", err);
-  }
-}
 
 function handleNotification(message: any) {
   console.log("[Global WS Notification] RAW:", JSON.stringify(message, null, 2));
@@ -120,9 +111,7 @@ function handleNotification(message: any) {
     if (isJobRun) {
       const event = new CustomEvent("moqui:jobRunUpdate", { detail: doc });
       window.dispatchEvent(event);
-      try {
-        if (syncChannel) syncChannel.postMessage({ type: "REFRESH_JOB_RUNS", detail: doc });
-      } catch (e) { /* ignore */ }
+
     } else if (isDataManagerLog) {
       mdmStore.upsertLog({
         ...doc,
@@ -173,36 +162,9 @@ export function useGlobalNotifications() {
         }
       }
     );
-
-    try {
-      syncChannel = new BroadcastChannel("accxui_job_manager_live_sync");
-      syncChannel.onmessage = (event) => {
-        if (event.data?.type === "REFRESH_MDM_LOGS") {
-          console.log("[BroadcastChannel] Syncing MDM logs from another tab/window...");
-          const { mdmStore } = getStores();
-          mdmStore.fetchDataManagerLogs({ pageSize: 50, silent: true });
-        } else if (event.data?.type === "REFRESH_SYSTEM_MESSAGES") {
-          console.log("[BroadcastChannel] Syncing System Messages from another tab/window...");
-          const { systemMessageStore } = getStores();
-          systemMessageStore.fetchSystemMessages({ pageSize: 50, silent: true });
-        } else if (event.data?.type === "REFRESH_JOB_RUNS") {
-          console.log("[BroadcastChannel] Syncing Job Runs from another tab/window...");
-          if (event.data?.detail) {
-            window.dispatchEvent(new CustomEvent("moqui:jobRunUpdate", { detail: event.data.detail }));
-          }
-        }
-      };
-    } catch (err) {
-      console.error("[BroadcastChannel] Failed to initialize live sync channel", err);
-    }
-
     _connect = connect;
     _disconnect = () => {
       disconnect();
-      if (syncChannel) {
-        syncChannel.close();
-        syncChannel = null;
-      }
     };
     _initialized = true;
   }
@@ -212,20 +174,4 @@ export function useGlobalNotifications() {
     connectGlobalNotifications: () => _connect?.(),
     disconnectGlobalNotifications: () => _disconnect?.(),
   };
-}
-
-export function broadcastSystemMessageUpdate() {
-  try {
-    if (syncChannel) syncChannel.postMessage({ type: "REFRESH_SYSTEM_MESSAGES" });
-  } catch (err) {
-    console.error("[BroadcastChannel] Failed to broadcast system message update", err);
-  }
-}
-
-export function broadcastJobRunUpdate(detail: any) {
-  try {
-    if (syncChannel) syncChannel.postMessage({ type: "REFRESH_JOB_RUNS", detail });
-  } catch (err) {
-    console.error("[BroadcastChannel] Failed to broadcast job run update", err);
-  }
 }
