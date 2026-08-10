@@ -541,6 +541,7 @@ const mdmStore = useMdmConfigStore();
 const utilStore = useUtilStore();
 
 const isLoading = ref(false);
+const hasInitiallyLoaded = ref(false);
 
 // Job stats
 const jobs = computed(() => jobStore.getJobs);
@@ -709,7 +710,7 @@ const slowJobsCount = computed(() => slowJobs.value.length);
 const failedJobsCount = computed(() => failedRunJobs.value.length);
 
 // MDM Logs priority grouping (High priority has config.priority > 6)
-const logs = computed(() => mdmStore.getLogs);
+const logs = computed(() => mdmStore.getDashboardLogs);
 
 const getLogPriority = (log: any) => {
   const config = mdmStore.getConfigs.find((c: any) => c.configId === log.configId);
@@ -942,15 +943,21 @@ const cancelDataManagerLog = async (configId: string, logId: string) => {
 const refreshData = async () => {
   isLoading.value = true;
   try {
-    await Promise.allSettled([
+    const promises: Promise<any>[] = [
       jobStore.fetchJobs(),
       systemMessageStore.fetchSystemMessages({ pageSize: 50 }),
       systemMessageStore.fetchSystemMessageTypes(),
-      mdmStore.fetchDataManagerLogs({ pageSize: 50 }),
       mdmStore.fetchConfigs(),
       utilStore.fetchStatusItemsByType("SystemMessage"),
       utilStore.fetchStatusItemsByType("DataManagerLog")
-    ]);
+    ];
+
+    // Seed dashboardLogs only on first entry — WebSocket (upsertLog) maintains it after that.
+    // dashboardLogs is isolated from this.logs, so FileHistory fetches can never corrupt it.
+    if (!hasInitiallyLoaded.value) {
+      promises.push(mdmStore.fetchDataManagerLogsForDashboard());
+    }
+    await Promise.allSettled(promises);
 
     // Fetch run history for active scheduled jobs in parallel to diagnose stuck/slow run anomalies
     const activeJobs = jobs.value.filter((job: any) => job.paused === 'N' && !!job.cronExpression);
@@ -1004,9 +1011,9 @@ function onJobRunUpdate(event: Event) {
 
 onIonViewWillEnter(async () => {
   emitter.on("productStoreUpdated", refreshData);
-  // Listen for job run events dispatched by the global WS handler
   window.addEventListener("moqui:jobRunUpdate", onJobRunUpdate);
   await refreshData();
+  hasInitiallyLoaded.value = true;
 });
 
 onIonViewWillLeave(() => {

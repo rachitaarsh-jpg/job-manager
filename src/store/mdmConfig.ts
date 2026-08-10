@@ -3,7 +3,7 @@ import { getTimeInMillis } from "@/utils";
 import { api } from "@common";
 import { defineStore } from "pinia";
 
-let activeIngestionTimer: ReturnType<typeof setTimeout> | null = null;
+
 
 export const useMdmConfigStore = defineStore("mdmConfig", {
   state: () => ({
@@ -11,6 +11,7 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
     executionModes: [] as Array<any>,
     logs: [] as Array<any>,
     logsCount: 0,
+    dashboardLogs: [] as Array<any>,  // Dedicated to Pipeline dashboard — never touched by FileHistory fetches
     isFetchingLogs: false,
     filters: {} as Record<string, any>,
     globalStats: { total: 0, successful: 0, failed: 0, avgProcessingTime: 0 },
@@ -24,6 +25,7 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
     getExecutionModes: (state: any) => state.executionModes,
     getLogs: (state: any) => state.logs,
     getLogsCount: (state: any) => state.logsCount,
+    getDashboardLogs: (state: any) => state.dashboardLogs,
     getAppliedFilters: (state: any) => JSON.parse(JSON.stringify(state.filters)),
     getGlobalStats: (state: any) => state.globalStats,
     getFetchStatus: (state: any) => state.fetchStatus
@@ -155,7 +157,6 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           params: payload
         })
 
-        const prevPendingCount = this.logs.filter((l: any) => ["DmlsPending", "DmlsQueued", "DmlsRunning"].includes(l.statusId)).length;
         if (resp.data?.dataManagerLogsCount) {
           this.logs = resp.data.dataManagerLogs
           this.logsCount = resp.data.dataManagerLogsCount
@@ -163,29 +164,8 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           this.logs = []
           this.logsCount = 0
         }
-        const newPendingCount = this.logs.filter((l: any) => ["DmlsPending", "DmlsQueued", "DmlsRunning"].includes(l.statusId)).length;
-        if (prevPendingCount > 0 && newPendingCount === 0) {
-          try {
-            const channel = new BroadcastChannel("accxui_job_manager_live_sync");
-            channel.postMessage({ type: "REFRESH_MDM_LOGS" });
-            channel.close();
-          } catch (e) { /* ignore */ }
-        }
-
-        if (newPendingCount > 0) {
-          if (!activeIngestionTimer) {
-            console.log(`[mdmConfig] ${newPendingCount} active ingestion(s) in progress. Watching for completion...`);
-            activeIngestionTimer = setTimeout(() => {
-              activeIngestionTimer = null;
-              this.fetchDataManagerLogs({ ...payload, silent: true });
-            }, 3000);
-          }
-        } else if (activeIngestionTimer) {
-          clearTimeout(activeIngestionTimer);
-          activeIngestionTimer = null;
-        }
       } catch (err) {
-        logger.error("Failed to fetch logs", err)
+        logger.error("Failed to fetch data manager logs", err)
       } finally {
         if(!params.silent) {
           this.isFetchingLogs = false;
@@ -250,46 +230,41 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
     },
     /**
      * Upsert a data manager log document received from a live WebSocket notification.
-     * Merges the sparse update into the existing entry (keyed on logId), or
-     * prepends if it's a new log. Caps the list at 50 to prevent unbounded growth.
+     * Writes to dashboardLogs (Pipeline-only) so FileHistory's fetches never corrupt the counts.
+     * Caps at 100 to prevent unbounded growth.
      */
     upsertLog(doc: Record<string, any>) {
       const logId = doc.logId || doc.dataManagerLogId || doc.id;
       if(!logId) return;
-      const idx = this.logs.findIndex((log: any) => (log.logId || log.dataManagerLogId || log.id) == logId);
       const normalized = {
         ...doc,
         logId,
         configId: doc.configId || doc.dataManagerConfigId,
         statusId: doc.statusId || doc.logStatusId || doc.status
       };
+      const idx = this.dashboardLogs.findIndex((log: any) => (log.logId || log.dataManagerLogId || log.id) == logId);
       if(idx >= 0) {
-        this.logs.splice(idx, 1, { ...this.logs[idx], ...normalized });
+        this.dashboardLogs.splice(idx, 1, { ...this.dashboardLogs[idx], ...normalized });
       } else {
-        this.logs.unshift(normalized);
+        this.dashboardLogs.unshift(normalized);
+        if(this.dashboardLogs.length > 100) this.dashboardLogs.splice(100);
       }
-      
-      // Separate sliding windows for High Priority and Standard Priority so they don't flush each other out.
-      const isHighPriority = (configId: string) => {
-        const config = this.configs.find((c: any) => c.configId === configId);
-        return config?.priority ? Number(config.priority) > 6 : false;
-      };
-      
-      const highLogs = this.logs.filter((log: any) => isHighPriority(log.configId));
-      const standardLogs = this.logs.filter((log: any) => !isHighPriority(log.configId));
-      
-      if (highLogs.length > 50) {
-        // Find the oldest high priority log and remove it
-        const oldestHigh = highLogs[highLogs.length - 1];
-        this.logs = this.logs.filter((log: any) => log.logId !== oldestHigh.logId);
+    },
+    async fetchDataManagerLogsForDashboard() {
+      // Writes ONLY to dashboardLogs — completely isolated from this.logs used by FileHistory.
+      this.isFetchingLogs = true;
+      try {
+        const resp = await api({
+          url: "admin/dataManager/details",
+          method: "get",
+          params: { pageSize: 50, pageIndex: 0, orderByField: "-createdDate" }
+        });
+        this.dashboardLogs = resp.data?.dataManagerLogs || [];
+      } catch (err) {
+        logger.error("Failed to fetch dashboard logs", err);
+      } finally {
+        this.isFetchingLogs = false;
       }
-      if (standardLogs.length > 50) {
-        // Find the oldest standard priority log and remove it
-        const oldestStandard = standardLogs[standardLogs.length - 1];
-        this.logs = this.logs.filter((log: any) => log.logId !== oldestStandard.logId);
-      }
-      
-      this.logsCount = Math.max(this.logsCount || 0, this.logs.length);
     },
     async fetchGlobalStats() {
       const moquiStatuses = "DmlsCancelled,DmlsCrashed,DmlsFailed,DmlsFinished,DmlsPending,DmlsQueued,DmlsRunning"
