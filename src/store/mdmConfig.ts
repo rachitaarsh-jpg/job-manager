@@ -144,6 +144,10 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
           payload["statusId"] = "DmlsCancelled,DmlsCrashed,DmlsFailed,DmlsFinished,DmlsPending,DmlsQueued,DmlsRunning"
           payload["statusId_op"] = "in"
         }
+        
+        if (!payload.orderByField) {
+          payload["orderByField"] = "-createdDate"
+        }
 
         const resp = await api({
           url: "admin/dataManager/details",
@@ -264,9 +268,27 @@ export const useMdmConfigStore = defineStore("mdmConfig", {
       } else {
         this.logs.unshift(normalized);
       }
-      if(this.logs.length > 50) {
-        this.logs.splice(50);
+      
+      // Separate sliding windows for High Priority and Standard Priority so they don't flush each other out.
+      const isHighPriority = (configId: string) => {
+        const config = this.configs.find((c: any) => c.configId === configId);
+        return config?.priority ? Number(config.priority) > 6 : false;
+      };
+      
+      const highLogs = this.logs.filter((log: any) => isHighPriority(log.configId));
+      const standardLogs = this.logs.filter((log: any) => !isHighPriority(log.configId));
+      
+      if (highLogs.length > 50) {
+        // Find the oldest high priority log and remove it
+        const oldestHigh = highLogs[highLogs.length - 1];
+        this.logs = this.logs.filter((log: any) => log.logId !== oldestHigh.logId);
       }
+      if (standardLogs.length > 50) {
+        // Find the oldest standard priority log and remove it
+        const oldestStandard = standardLogs[standardLogs.length - 1];
+        this.logs = this.logs.filter((log: any) => log.logId !== oldestStandard.logId);
+      }
+      
       this.logsCount = Math.max(this.logsCount || 0, this.logs.length);
     },
     async fetchGlobalStats() {

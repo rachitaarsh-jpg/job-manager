@@ -127,13 +127,28 @@ function handleNotification(message: any) {
   });
 
   if (mdmUpdated) {
-    // Fetch clean 50 logs from server to ensure 100% precision of all card counts and computed states
-    mdmStore.fetchDataManagerLogs({ pageSize: 50, silent: true });
-    broadcastMdmUpdate();
+    // Surgically fetch the full details of the updated logs to populate missing fields (like configId)
+    // without overwriting the entire array or destroying the user's pagination.
+    setTimeout(() => {
+      docs.forEach(async (doc) => {
+        const logId = doc.logId || doc.dataManagerLogId || doc.id;
+        if (logId) {
+          const fullLog = await mdmStore.fetchDataManagerLogById(logId);
+          if (fullLog) mdmStore.upsertLog(fullLog);
+        }
+      });
+    }, 2000);
   }
   if (systemMessageUpdated) {
-    systemMessageStore.fetchSystemMessages({ pageSize: 50, silent: true });
-    broadcastSystemMessageUpdate();
+    setTimeout(() => {
+      docs.forEach(async (doc) => {
+        const msgId = doc.systemMessageId;
+        if (msgId) {
+          const fullMsg = await systemMessageStore.fetchSystemMessageById(msgId);
+          if (fullMsg) systemMessageStore.upsertSystemMessage(fullMsg);
+        }
+      });
+    }, 2000);
   }
 
   if (message.showAlert !== false) {
