@@ -31,6 +31,7 @@ const TOPICS = [
   "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
   "DataManagerLog",
   "ServiceJobRun",
+  "ServiceJob",
   "SystemMessage",
   "DataManagerLogFeed",
   "dataManagerLogFeed",
@@ -52,6 +53,7 @@ function getLiveNotificationLabel(message: any): string {
   if (message.title) return message.title;
   const topic = String(message.topic || message.message?.dataDocumentId || message.dataDocumentId || "").toLowerCase();
   if (topic.includes("jobrun") || topic.includes("job_run")) return translate("Service job run updated");
+  if (topic === "servicejob" || topic.includes("service_job")) return translate("Job schedule updated");
   if (topic.includes("datamanager") || topic.includes("data_manager") || topic.includes("dmls")) return translate("Data manager log updated");
   if (topic.includes("systemmessage") || topic.includes("system_message")) return translate("System message updated");
   return translate("Dashboard updated");
@@ -79,7 +81,7 @@ function handleNotification(message: any) {
     : message;
 
   let docsRaw = innerMsg.documents || innerMsg.document || innerMsg.data || message.documents || message.document || message.data;
-  if (!docsRaw && (innerMsg.logId || innerMsg.dataManagerLogId || innerMsg.jobRunId || innerMsg.systemMessageId || typeof innerMsg.statusId === "string" || typeof innerMsg.logStatusId === "string")) {
+  if (!docsRaw && (innerMsg.logId || innerMsg.dataManagerLogId || innerMsg.jobRunId || innerMsg.systemMessageId || innerMsg.jobName || typeof innerMsg.statusId === "string" || typeof innerMsg.logStatusId === "string")) {
     docsRaw = [innerMsg];
   }
 
@@ -97,20 +99,28 @@ function handleNotification(message: any) {
     return;
   }
 
-  const { mdmStore, systemMessageStore } = getStores();
+  const { mdmStore, systemMessageStore, jobStore } = getStores();
   let mdmUpdated = false;
   let systemMessageUpdated = false;
 
   docs.forEach((rawDoc: any) => {
     const doc = rawDoc._source || rawDoc._doc || rawDoc.doc || rawDoc.document || rawDoc;
     const idStr = String(docId || "").toLowerCase();
-    const isJobRun = idStr.includes("jobrun") || idStr.includes("job_run") || doc.jobRunId || doc.jobName;
+    const isJobRun = (idStr.includes("jobrun") || idStr.includes("job_run") || doc.jobRunId) && !doc.jobName;
+    // ServiceJob: topic is exactly "servicejob" OR doc has jobName but no jobRunId (it's a job definition, not a run)
+    const isServiceJob = idStr === "servicejob" || (doc.jobName && !doc.jobRunId && (doc.paused !== undefined || doc.cronExpression !== undefined));
     const isDataManagerLog = idStr.includes("datamanager") || idStr.includes("data_manager") || idStr.includes("dmls") || doc.logId || doc.dataManagerLogId || (typeof doc.statusId === "string" && doc.statusId.startsWith("Dmls")) || (typeof doc.logStatusId === "string" && doc.logStatusId.startsWith("Dmls"));
     const isSystemMessage = idStr.includes("systemmessage") || idStr.includes("system_message") || doc.systemMessageId || doc.systemMessageTypeId;
 
     if (isJobRun) {
       const event = new CustomEvent("moqui:jobRunUpdate", { detail: doc });
       window.dispatchEvent(event);
+
+    } else if (isServiceJob) {
+      // Surgically update this single job in the jobs store so the Dashboard card re-computes instantly.
+      // This avoids a race condition where fetching jobs immediately might catch a newly cloned job
+      // before its parameters are fully saved by the frontend.
+      jobStore.upsertJob(doc);
 
     } else if (isDataManagerLog) {
       mdmStore.upsertLog({
