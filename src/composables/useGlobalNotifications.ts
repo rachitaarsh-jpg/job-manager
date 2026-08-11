@@ -71,8 +71,6 @@ function getStores() {
 
 
 function handleNotification(message: any) {
-  console.log("[Global WS Notification] RAW:", JSON.stringify(message, null, 2));
-
   // Moqui wraps DataFeed documents inside a nested 'message' object.
   // Structure: { topic, message: { dataDocumentId, documents: [...] } }
   // Some topics may send a flat payload — handle both.
@@ -91,8 +89,6 @@ function handleNotification(message: any) {
 
   const docId = String(innerMsg.dataDocumentId || message.dataDocumentId || message.topic || "").toLowerCase();
 
-  console.log("[Global WS Notification] docId:", docId, "| docs:", docs.length);
-
   if (docs.length === 0) {
     // No documents to process — only show the toast
     if (message.showAlert !== false) showToast(getLiveNotificationLabel(message));
@@ -106,11 +102,12 @@ function handleNotification(message: any) {
   docs.forEach((rawDoc: any) => {
     const doc = rawDoc._source || rawDoc._doc || rawDoc.doc || rawDoc.document || rawDoc;
     const idStr = String(docId || "").toLowerCase();
-    const isJobRun = (idStr.includes("jobrun") || idStr.includes("job_run") || doc.jobRunId) && !doc.jobName;
-    // ServiceJob: topic is exactly "servicejob" OR doc has jobName but no jobRunId (it's a job definition, not a run)
+    
+    // Determine type strictly by topic if possible, otherwise fallback to field sniffing
+    const isSystemMessage = idStr.includes("systemmessage") || idStr.includes("system_message") || (!!(doc.systemMessageId || doc.systemMessageTypeId) && !idStr.includes("jobrun"));
+    const isDataManagerLog = idStr.includes("datamanager") || idStr.includes("data_manager") || idStr.includes("dmls") || (!!(doc.logId || doc.dataManagerLogId) && !idStr.includes("jobrun")) || (typeof doc.statusId === "string" && doc.statusId.startsWith("Dmls")) || (typeof doc.logStatusId === "string" && doc.logStatusId.startsWith("Dmls"));
     const isServiceJob = idStr === "servicejob" || (doc.jobName && !doc.jobRunId && (doc.paused !== undefined || doc.cronExpression !== undefined));
-    const isDataManagerLog = idStr.includes("datamanager") || idStr.includes("data_manager") || idStr.includes("dmls") || doc.logId || doc.dataManagerLogId || (typeof doc.statusId === "string" && doc.statusId.startsWith("Dmls")) || (typeof doc.logStatusId === "string" && doc.logStatusId.startsWith("Dmls"));
-    const isSystemMessage = idStr.includes("systemmessage") || idStr.includes("system_message") || doc.systemMessageId || doc.systemMessageTypeId;
+    const isJobRun = (idStr.includes("jobrun") || idStr.includes("job_run") || !!doc.jobRunId) && !doc.jobName && !isSystemMessage && !isDataManagerLog;
 
     if (isJobRun) {
       const event = new CustomEvent("moqui:jobRunUpdate", { detail: doc });

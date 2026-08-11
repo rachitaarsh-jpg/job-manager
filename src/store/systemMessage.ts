@@ -129,8 +129,12 @@ export const useSystemMessageStore = defineStore("systemMessage", {
       } else {
         (this.systemMessages as any[]).unshift(normalized);
       }
-      if (this.systemMessages.length > 50) {
-        this.systemMessages.splice(50);
+      
+      // Maintain a larger bounded buffer (e.g., 500) for performance. 
+      // Since the initial fetch is 50, this provides headroom for 450 live updates
+      // before items fall off the bottom and cause dashboard counts to stagnate.
+      if (this.systemMessages.length > 500) {
+        this.systemMessages.splice(500);
       }
       this.systemMessageTotal = Math.max(this.systemMessageTotal || 0, this.systemMessages.length);
     },
