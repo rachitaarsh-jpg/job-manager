@@ -41,6 +41,7 @@
     "@types/luxon": "catalog:",
     "@types/papaparse": "catalog:",
     "eslint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite-plugin-pwa": "catalog:"
   }
 }
