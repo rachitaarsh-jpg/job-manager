@@ -2,8 +2,7 @@ import { useMoquiNotifications } from "@/composables/useMoquiNotifications";
 import { useMdmConfigStore } from "@/store/mdmConfig";
 import { useSystemMessageStore } from "@/store/systemMessage";
 import { useJobStore } from "@/store/jobs";
-import { getTimeInMillis } from "@/utils";
-import { showToast } from "@/utils";
+import { getTimeInMillis, showToast } from "@/utils";
 import { translate } from "@common";
 
 /**
@@ -102,7 +101,7 @@ function handleNotification(message: any) {
   docs.forEach((rawDoc: any) => {
     const doc = rawDoc._source || rawDoc._doc || rawDoc.doc || rawDoc.document || rawDoc;
     const idStr = String(docId || "").toLowerCase();
-    
+
     // Determine type strictly by topic if possible, otherwise fallback to field sniffing
     const isSystemMessage = idStr.includes("systemmessage") || idStr.includes("system_message") || (!!(doc.systemMessageId || doc.systemMessageTypeId) && !idStr.includes("jobrun"));
     const isDataManagerLog = idStr.includes("datamanager") || idStr.includes("data_manager") || idStr.includes("dmls") || (!!(doc.logId || doc.dataManagerLogId) && !idStr.includes("jobrun")) || (typeof doc.statusId === "string" && doc.statusId.startsWith("Dmls")) || (typeof doc.logStatusId === "string" && doc.logStatusId.startsWith("Dmls"));
