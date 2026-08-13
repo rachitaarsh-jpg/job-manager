@@ -1,27 +1,42 @@
 HotWax Commerce Job Manager App
 
 # Prerequisite
-- [accxui](https://github.com/hotwax/accxui) workspace `v1.0.1` or higher - Job Manager is developed and built from within an accxui workspace, not standalone. Refer to accxui's README for workspace setup.
+
+- Node `v22.12.0` or higher
+- `pnpm`
+
 
 # Build Notes (Users)
 
-1. Download the app from [release](https://github.com/hotwax/job-manager/releases) page and extract it.
-2. Go to the app directory.
-3. Run following command to download dependencies  
-    `npm i`
-4. Create a `.env` file by taking reference from the `.env.example`
-5. To run the app in browser use the command: `ionic serve`
+This app is developed and run from the [`accxui`](https://github.com/hotwax/accxui) pnpm workspace. It is not started by running commands inside this app folder directly.
+
+1. Open a Terminal window.
+2. Clone the workspace using the command: `git clone https://github.com/hotwax/accxui.git`
+3. Go to the workspace root using command: `cd accxui`
+4. Download the app from the [release](https://github.com/hotwax/job-manager/releases) page, extract it, and place it at `apps/job-manager`.
+5. Create a `.env` file in `apps/job-manager` by taking reference from its `.env.example`.
+6. Run following command from the `accxui` root to download dependencies  
+    `pnpm install`
+7. To run the app in browser use the command from the `accxui` root:  
+    `pnpm --filter job-manager dev`
 
 
 # Build Notes (Contributors)
 
-1. Open a Terminal window
-2. Clone the accxui workspace: `git clone https://github.com/hotwax/accxui.git`
-3. Go to the apps folder inside the workspace: `cd accxui/apps`
-4. Clone this app into the apps folder: `git clone https://github.com/hotwax/job-manager.git`
-5. Create a `.env` file inside `apps/job-manager` by taking reference from the `.env.example`
-6. Install dependencies once from the accxui root: `pnpm install`
-7. Start the app from the accxui root: `pnpm --filter job-manager dev`
+1. Open a Terminal window.
+2. Clone the workspace using the command: `git clone https://github.com/hotwax/accxui.git`
+3. Go to the workspace root using command: `cd accxui`
+4. Clone this app under `apps/` using the command:  
+    `git clone https://github.com/hotwax/job-manager.git apps/job-manager`
+5. Create a `.env` file in `apps/job-manager` by taking reference from its `.env.example`.
+6. Run following command from the `accxui` root to download dependencies  
+    `pnpm install`
+7. To run the app in browser use the command from the `accxui` root:  
+    `pnpm --filter job-manager dev`
+8. To build the app use the command from the `accxui` root:  
+    `pnpm --filter job-manager build`
+
+Run `pnpm install` from the `accxui` root again whenever you add another app under `apps/`. See the [accxui README](https://github.com/hotwax/accxui/blob/main/README.md) for the full workspace guide.
 
 
 # Contribution Guideline
