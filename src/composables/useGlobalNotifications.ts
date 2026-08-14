@@ -171,21 +171,100 @@ let _connect: (() => void) | null = null;
 let _initialized = false;
 const _isConnected = ref(false);
 
+// Cross-tab Synchronization State
+let _isLeader = false;
+let _releaseLeaderLock: (() => void) | null = null;
+let _broadcastChannel: BroadcastChannel | null = null;
+
+function setupBroadcastChannel() {
+  if (_broadcastChannel) return;
+  _broadcastChannel = new BroadcastChannel("moqui-global-notifications");
+
+  _broadcastChannel.onmessage = (event) => {
+    if (!_isLeader) {
+      if (event.data?.type === "notification") {
+        // We are a follower tab, handle the broadcasted notification locally
+        handleNotification(event.data.payload);
+      } else if (event.data?.type === "connection-state") {
+        // Sync the connection state from the leader so our UI shows "Live" correctly
+        _isConnected.value = event.data.payload;
+      }
+    } else {
+      // If we ARE the leader, and a new tab just opened and asked for the current state
+      if (event.data?.type === "request-connection-state") {
+        _broadcastChannel.postMessage({ type: "connection-state", payload: _isConnected.value });
+      }
+    }
+  };
+
+  // As soon as this tab opens, ask the leader (if any) for the current connection state
+  _broadcastChannel.postMessage({ type: "request-connection-state" });
+}
+
+// Wrapper to broadcast messages to follower tabs if we are the leader
+function onWsMessageReceived(message: any) {
+  if (_isLeader && _broadcastChannel) {
+    _broadcastChannel.postMessage({ type: "notification", payload: message });
+  }
+  handleNotification(message);
+}
+
 export function useGlobalNotifications() {
   if (!_initialized) {
+    setupBroadcastChannel();
+
     const { connect, disconnect, isConnected } = useMoquiNotifications(
       TOPICS,
-      handleNotification,
+      onWsMessageReceived,
       {
         reconnectDelay: 3000,
         onConnectionChange: (connected) => {
           _isConnected.value = connected;
+          // If we are the leader, broadcast any connection drops/reconnects to followers
+          if (_isLeader && _broadcastChannel) {
+            _broadcastChannel.postMessage({ type: "connection-state", payload: connected });
+          }
         }
       }
     );
-    _connect = connect;
+
+    _connect = () => {
+      // If Web Locks API is supported (all modern browsers), elect a leader.
+      // The leader connects to the WebSocket, followers listen to the BroadcastChannel.
+      if (navigator.locks) {
+        navigator.locks.request("moqui-ws-leader", { mode: "exclusive" }, () => {
+          // By returning a Promise that never naturally resolves,
+          // we "hold onto" the lock forever, until the tab is closed.
+          return new Promise<void>((resolve) => {
+            _isLeader = true;
+            _releaseLeaderLock = resolve;
+
+            connect();
+
+            // Broadcast our state immediately upon taking over as leader
+            if (_broadcastChannel) {
+              _broadcastChannel.postMessage({ type: "connection-state", payload: _isConnected.value });
+            }
+          });
+        }).catch(err => {
+
+          _isLeader = true;
+          connect();
+        });
+      } else {
+        // Fallback for very old browsers: everyone is a leader
+        _isLeader = true;
+        connect();
+      }
+    };
+
     _disconnect = () => {
       disconnect();
+      if (_releaseLeaderLock) {
+        _releaseLeaderLock(); // Release the lock so another tab can take over
+        _releaseLeaderLock = null;
+      }
+      _isLeader = false;
     };
     _initialized = true;
   }
