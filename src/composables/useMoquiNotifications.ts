@@ -55,8 +55,7 @@ export function useMoquiNotifications(
       let base = oms.replace(/^https?:\/\//, (match: string) =>
         match.startsWith("https") ? "wss://" : "ws://"
       ).replace(/\/$/, "");
-
-      const param = `?moquiSessionToken=${encodeURIComponent(token)}`;
+      const param = `?token=${encodeURIComponent(token)}`;
       const urls: string[] = [];
 
       // Candidate 1: Try appending /notws directly to the exact OMS base URL (e.g., /api/notws)
